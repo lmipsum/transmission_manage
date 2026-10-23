@@ -75,6 +75,25 @@ def test_set_labels_legacy_naming(legacy_server):
     assert legacy_server.requests[-1]["body"]["arguments"] == {"ids": ["a" * 40], "labels": ["noHL"]}
 
 
+def test_limits_and_session_use_each_protocols_naming(jsonrpc_server, legacy_server):
+    fields = {"seed_ratio_mode": 1, "seed_ratio_limit": 2.0, "upload_limited": True}
+    client_for(jsonrpc_server).set_torrent(["a" * 40], fields)
+    assert jsonrpc_server.requests[-1]["body"]["params"] == {**fields, "ids": ["a" * 40]}
+    legacy = client_for(legacy_server)
+    legacy.set_torrent(["a" * 40], fields)
+    assert legacy_server.requests[-1]["body"]["arguments"] == {
+        "seedRatioMode": 1,
+        "seedRatioLimit": 2.0,
+        "uploadLimited": True,
+        "ids": ["a" * 40],
+    }
+    # Legacy session arguments are kebab-case, except seedRatioLimit and seedRatioLimited.
+    legacy.set_session({"seed_ratio_limited": False, "idle_seeding_limit_enabled": False})
+    assert legacy_server.requests[-1]["body"]["arguments"] == {"seedRatioLimited": False, "idle-seeding-limit-enabled": False}
+    legacy.session(["seed_ratio_limit", "idle_seeding_limit_enabled", "units"])
+    assert legacy_server.requests[-1]["body"]["arguments"]["fields"] == ["seedRatioLimit", "idle-seeding-limit-enabled", "units"]
+
+
 def test_jsonrpc_error_surfaces_the_daemon_message(jsonrpc_server):
     jsonrpc_server.jsonrpc_error = {"code": 7, "message": "backend error", "data": {"errorString": "disk full"}}
     with pytest.raises(TransmissionError, match="backend error: disk full") as err:

@@ -72,5 +72,10 @@ class Webhooks:
         return self._send(self.error_url, payload)
 
     def function(self, name, payload):
-        """Per-command notification, e.g. the list of torrents a command acted on."""
-        return self._send(self.function_urls.get(name), {"function": name, **payload})
+        """Per-command notification, e.g. the list of torrents a command acted on.
+
+        As upstream, it goes to the first configured function whose name is part of this one, so
+        cleanup_share_limits uses the share_limits URL and untag_tracker_error the tag_tracker_error one.
+        """
+        url = next((url for key, url in self.function_urls.items() if key in name), None)
+        return self._send(url, {"function": name, **payload})

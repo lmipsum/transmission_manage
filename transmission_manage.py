@@ -15,6 +15,7 @@ from modules.config import Config
 from modules.core import recheck
 from modules.core import remove_orphaned
 from modules.core import remove_unregistered
+from modules.core import share_limits
 from modules.core import tag_nohardlinks
 from modules.core import tags
 from modules.hooks import Hooks
@@ -45,6 +46,7 @@ COMMANDS = {
     "rem_unregistered": remove_unregistered.run,
     "tag_tracker_error": remove_unregistered.run,
     "tag_nohardlinks": tag_nohardlinks.run,
+    "share_limits": share_limits.run,
     "rem_orphaned": remove_orphaned.run,
 }
 

@@ -62,9 +62,9 @@ configuration.
 | `remove_unregistered` + `tag_tracker_error` | done | Tracker state is read from `tracker_stats`: a successful announce on any tracker means working (qBittorrent's WORKING); not yet announced, queued or announcing means inconclusive (NOT_CONTACTED / UPDATING); backup trackers are ignored. |
 | `tag_nohardlinks` | done | The `nohardlinks` section is keyed by Transmission label, since Transmission has no categories; `ignore_category_dir` is therefore not available. |
 | `remove_orphaned` | done | Torrent file paths are `download_dir` + `files`; for torrents that are not complete, the session's `incomplete_dir` and the `.part` suffix stand in for qBittorrent's download path. Download directories of torrents are kept when empty folders are removed, in place of category save paths. |
-| `recheck` | done | A per-torrent ratio limit exists only with `seed_ratio_mode` 1; global and unlimited modes count as no limit, as upstream treats qBittorrent's -2 and -1. Transmission has no seeding-time limit (its idle limit measures inactivity), so that part of upstream's check always reads as no limit. |
+| `recheck` | done | A per-torrent ratio limit exists only with `seed_ratio_mode` 1; global and unlimited modes count as no limit, as upstream treats qBittorrent's -2 and -1. The seeding-time limit is the one `share_limits` enforces for the torrent's group. |
 | `tag_update` | done | Tags are Transmission `labels`, added to the existing ones. qBittorrent's `stalledDL` is a downloading torrent with `is_stalled`; privacy comes from `is_private`. Tracker keywords match the announce URLs case-sensitively, as upstream; `other` and the host fallback work as upstream. |
-| `share_limits` | later | |
+| `share_limits` | done | Groups filter by label and size (no categories). The ratio limit maps to `seed_ratio_mode`/`seed_ratio_limit`; Transmission stops a torrent that reaches it. Transmission has no seeding-time limit, so the port stops a torrent that has seeded `max_seeding_time` on its next run, and `recheck` does not resume it. `share_limit_action` is `Default` or `Stop`; `disable_qbt_default_share_limits` turns off the session's ratio and idle limits. Upload speeds stay in KiB/s. Removals go through `pre_remove`; the recycle bin is not ported. |
 | Categories and other qBittorrent-only features | out of scope | No Transmission equivalent. |
 
 ### Hooks
@@ -80,8 +80,9 @@ hooks:
 ```
 
 The command receives a JSON object on stdin (`command`, `hash`, `name`,
-`tracker`, `status`, `delete_data`, `dry_run`). Exit status `0` lets the
-removal proceed; any other status, a failure to run, or a timeout skips it.
+`tracker`, `delete_data`, `dry_run`, plus `status` for `rem_unregistered` or
+`grouping` and `reason` for `share_limits`). Exit status `0` lets the removal
+proceed; any other status, a failure to run, or a timeout skips it.
 
 ## Development
 
