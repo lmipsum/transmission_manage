@@ -16,6 +16,7 @@ from modules.core import recheck
 from modules.core import remove_orphaned
 from modules.core import remove_unregistered
 from modules.core import tag_nohardlinks
+from modules.core import tags
 from modules.hooks import Hooks
 from modules.logs import setup_logging
 from modules.transmission import TransmissionClient
@@ -40,6 +41,7 @@ COMMAND_ORDER = (
 # module can serve several commands; it then runs once and reads the command switches itself.
 COMMANDS = {
     "recheck": recheck.run,
+    "tag_update": tags.run,
     "rem_unregistered": remove_unregistered.run,
     "tag_tracker_error": remove_unregistered.run,
     "tag_nohardlinks": tag_nohardlinks.run,
