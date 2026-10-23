@@ -1,0 +1,83 @@
+# Example configuration. These are NOT defaults: review every value before use.
+# Section and key names follow qbit_manage where Transmission allows it; unknown keys are rejected.
+
+commands:
+  # Commands set here OVERRIDE the command line, as in qbit_manage. Remove the section to use CLI flags only.
+  dry_run: True # Log what would change, change nothing.
+  recheck: False
+  tag_update: False
+  rem_unregistered: False
+  tag_tracker_error: False
+  rem_orphaned: False
+  tag_nohardlinks: False
+  share_limits: False
+  skip_cleanup: False
+
+transmission:
+  host: "localhost:9091"
+  rpc_path: "/transmission/rpc"
+  # Pass environment variables to the config via the !ENV tag.
+  user: !ENV TRANSMISSION_USER
+  pass: !ENV TRANSMISSION_PASS
+  ssl: False
+  protocol: auto # auto | jsonrpc (Transmission 4.1+) | legacy
+  timeout: 30 # Seconds per RPC call.
+  retries: 2 # Retries on connection errors.
+
+settings:
+  tracker_error_tag: issue # Label for torrents without a working tracker.
+  nohardlinks_tag: noHL # Label for torrents without hardlinks outside the root dir.
+  stalled_tag: stalledDL
+  private_tag: null # Label for private torrents (null to disable).
+  tag_nohardlinks_filter_completed: True # Only check completed torrents.
+  rem_unregistered_filter_completed: False # Only remove completed torrents.
+  rem_unregistered_ignore_list: # Tracker messages containing any of these are never treated as unregistered.
+    - example placeholder words
+  rem_unregistered_grace_minutes: 10 # Skip torrents added less than this many minutes ago.
+  rem_unregistered_max_torrents: 10 # Max removals per tracker per run.
+
+directory:
+  root_dir: "/path/to/torrents/" # Download root used for orphaned files and noHL.
+  remote_dir: null # Host path of root_dir if Transmission runs in a container and this tool does not.
+  torrents_dir: "/path/to/transmission/torrents" # Transmission's .torrent store.
+  orphaned_dir: "/path/to/torrents/.orphaned" # Orphaned files are moved here before being purged.
+
+tracker:
+  # <URL keyword>: keyword found in the announce URL; several keywords can be joined with '|'.
+  #   tag: a label or a list of labels.
+  tracker-one.example.org:
+    tag: TrackerOne
+  tracker-two.example.net|tracker-two-backup.example.net:
+    tag: [TrackerTwo, private]
+
+nohardlinks:
+  # Label torrents whose files are not hardlinked outside root_dir (e.g. not imported into a media library).
+  # Keys are Transmission labels (qbit_manage uses categories; Transmission has none). Needs directory.root_dir.
+  # <OPTIONAL> global_options: defaults for every label. exclude_tags are merged; ignore_root_dir is overridden per label.
+  global_options:
+    exclude_tags:
+      - keep-seeding
+    ignore_root_dir: true
+  movies:
+  tv:
+    # <OPTIONAL> exclude_tags: torrents carrying any of these labels are skipped.
+    exclude_tags:
+      - manual
+    # <OPTIONAL> ignore_root_dir: ignore hardlinks inside root_dir itself (default true).
+    ignore_root_dir: true
+
+hooks:
+  # <OPTIONAL> pre_remove: command run before every torrent removal. It gets a JSON object on stdin
+  # (command, hash, name, tracker, status, delete_data, dry_run); exit status 0 lets the removal proceed,
+  # anything else skips it. A hook that fails to run or exceeds the timeout also skips the removal.
+  pre_remove: null
+  timeout: 60 # Seconds.
+
+webhooks:
+  # Plain http(s) URLs receiving a JSON POST. Leave empty to disable.
+  error: null
+  run_start: null
+  run_end: null
+  function:
+    rem_unregistered: null
+    rem_orphaned: null
