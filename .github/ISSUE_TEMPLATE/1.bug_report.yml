@@ -1,0 +1,63 @@
+name: Bug Report
+description: Something does not work as described.
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: >
+        **Before posting:** remove passkeys, tokens, tracker names and personal paths from everything below.
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config
+      description: >
+        The relevant part of your config.yml (redacted).
+        This will be automatically formatted into code, so no need for backticks.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The log output around the problem (redacted), or a link to a Gist.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: transmission
+    attributes:
+      label: Transmission version
+      description: Shown in the "Connected to Transmission" log line.
+      placeholder: eg. 4.1.3
+    validations:
+      required: true
+  - type: dropdown
+    id: protocol
+    attributes:
+      label: RPC protocol
+      description: Shown in the same log line.
+      options:
+        - jsonrpc
+        - legacy
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: transmission_manage version or commit
+      placeholder: eg. 0.1.0.dev0 or a commit hash
+    validations:
+      required: true
+  - type: checkboxes
+    id: upstream
+    attributes:
+      label: Upstream
+      options:
+        - label: The same behaviour does not happen with qbit_manage on qBittorrent (if you can check).
