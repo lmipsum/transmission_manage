@@ -189,3 +189,95 @@ def test_needs_root_dir_and_a_label(tmp_path):
     ctx = transmission_manage.Context(FakeClient([]), Config(str(path), {"tag_nohardlinks": True}), Hooks(), None)
     with pytest.raises(Failed, match="root_dir"):
         tnh.run(ctx)
+
+
+# --- upstream cases -----------------------------------------------------------------------------------
+# Ported from qbit_manage's tests/core/test_tag_nohardlinks.py (MIT, see NOTICE). Upstream's add_tag_no_hl and
+# check_previous_nohardlinks_tagged_torrents are one step here (_process); ignore_category_dir is not ported.
+
+
+class FakeCheckHardLinks:
+    def __init__(self, has_nohardlinks=True):
+        self.has = has_nohardlinks
+        self.calls = []
+
+    def nohardlink(self, path, ignore_root_dir=True):
+        self.calls.append({"file": path, "ignore_root_dir": ignore_root_dir})
+        return self.has
+
+
+def tagger(tmp_path, has_nohardlinks=True, dry_run=False):
+    root = tmp_path / "downloads"
+    root.mkdir(exist_ok=True)
+    ctx, client = context(tmp_path, root, [], "nohardlinks:\n  movies:\n", {"dry_run": dry_run})
+    module = tnh.TagNoHardLinks(ctx)
+    module.checker = FakeCheckHardLinks(has_nohardlinks)
+    return module, client
+
+
+OPTIONS = {"exclude_tags": [], "ignore_root_dir": True}
+
+
+def test_add_tag_no_hl_adds_tag_to_torrent(tmp_path):
+    module, client = tagger(tmp_path)
+    t = tor(1, "/data", "MyMovie", ["movies"])
+    module._process(t, OPTIONS)
+    assert client.calls == [((t["hash_string"],), ("movies", "noHL"))]
+    assert module.stats["tagged"] == 1
+
+
+def test_add_tag_no_hl_dry_run_suppresses_mutation(tmp_path):
+    module, client = tagger(tmp_path, dry_run=True)
+    module._process(tor(1, "/data", "MyMovie", ["movies"]), OPTIONS)
+    assert client.calls == [] and module.stats["tagged"] == 1
+
+
+def test_add_tag_no_hl_appends_to_notify_lists(tmp_path):
+    module, _ = tagger(tmp_path)
+    module._process(tor(1, "/data", "MyMovie", ["movies"]), OPTIONS)
+    assert module.events["tag_nohardlinks"] == [{"name": "MyMovie"}]
+
+
+def test_check_previous_untags_when_hardlinks_found(tmp_path):
+    module, client = tagger(tmp_path, has_nohardlinks=False)
+    t = tor(1, "/data", "MyMovie", ["movies", "noHL"])
+    module._process(t, OPTIONS)
+    assert client.calls == [((t["hash_string"],), ("movies",))]
+    assert module.stats["untagged"] == 1
+
+
+def test_check_previous_no_untag_when_still_no_hardlinks(tmp_path):
+    module, client = tagger(tmp_path, has_nohardlinks=True)
+    module._process(tor(1, "/data", "MyMovie", ["movies", "noHL"]), OPTIONS)
+    assert client.calls == [] and module.stats["untagged"] == 0
+
+
+def test_check_previous_no_untag_when_tag_not_present(tmp_path):
+    module, client = tagger(tmp_path, has_nohardlinks=False)
+    module._process(tor(1, "/data", "MyMovie", ["movies"]), OPTIONS)
+    assert client.calls == [] and module.stats["untagged"] == 0
+
+
+def test_check_previous_dry_run_suppresses_remove(tmp_path):
+    module, client = tagger(tmp_path, has_nohardlinks=False, dry_run=True)
+    module._process(tor(1, "/data", "MyMovie", ["movies", "noHL"]), OPTIONS)
+    assert client.calls == [] and module.stats["untagged"] == 1
+
+
+def test_process_torrent_does_not_retag_if_already_tagged(tmp_path):
+    module, client = tagger(tmp_path)
+    module._process(tor(1, "/data", "MyMovie", ["movies", "noHL"]), OPTIONS)
+    assert client.calls == [] and module.stats["tagged"] == 0
+
+
+def test_process_torrent_skips_excluded_tag(tmp_path):
+    for has_nohardlinks, labels in ((True, ["movies", "skip-me"]), (False, ["movies", "skip-me", "noHL"])):
+        module, client = tagger(tmp_path, has_nohardlinks=has_nohardlinks)
+        module._process(tor(1, "/data", "MyMovie", labels), {"exclude_tags": ["skip-me"], "ignore_root_dir": True})
+        assert client.calls == []
+
+
+def test_process_torrent_forwards_root_dir_setting(tmp_path):
+    module, _ = tagger(tmp_path)
+    module._process(tor(1, "/data", "MyMovie", ["movies"]), {"exclude_tags": [], "ignore_root_dir": False})
+    assert module.checker.calls == [{"file": os.path.join("/data", "MyMovie"), "ignore_root_dir": False}]

@@ -157,8 +157,8 @@ class RemoveUnregistered:
             if list_in_text(message.upper(), self.ignore_list):
                 logger.info("Ignoring unregistered torrent %s due to matching phrase found in ignore list.", torrent["name"])
             else:
-                age = self.age_minutes(torrent)
-                if self.grace_minutes > 0 and age is not None and age < self.grace_minutes:
+                within_grace, age = self.is_within_grace(torrent)
+                if within_grace:
                     logger.info(
                         "Skipping removal (within grace %d min, age %.1f min): %s", self.grace_minutes, age, torrent["name"]
                     )
@@ -169,11 +169,18 @@ class RemoveUnregistered:
             tracker = unregistered if unregistered is not None else failing[0]
             self.tag_tracker_error(torrent, tracker)
 
-    def age_minutes(self, torrent):
+    def is_within_grace(self, torrent):
+        """(within_grace, age_minutes) as upstream; a missing or unreadable added date never protects."""
+        if self.grace_minutes <= 0:
+            return False, 0.0
         added = torrent.get("added_date")
         if not added:
-            return None
-        return max(0.0, self.now() - float(added)) / 60
+            return False, 0.0
+        try:
+            age = max(0.0, self.now() - float(added)) / 60
+        except (TypeError, ValueError):
+            return False, 0.0
+        return age < self.grace_minutes, age
 
     def check_max_limit_and_delete(self, torrent, tracker, has_cross_seed, working_names):
         host = _tracker_key(tracker)

@@ -203,3 +203,208 @@ def test_config_defaults_and_root_dir_requirement(tmp_path):
     path.write_text("transmission: {}\n", encoding="utf-8")
     with pytest.raises(Failed, match="root_dir"):
         Config(str(path), {"rem_orphaned": True})
+
+
+# --- upstream cases -----------------------------------------------------------------------------------
+# Ported from qbit_manage's tests/core/test_remove_orphaned.py (MIT, see NOTICE). get_full_path_of_torrent_files
+# is torrent_file_paths here and handle_orphaned_files is RemoveOrphaned._handle. For incomplete torrents the
+# session's incomplete_dir stands in for qBittorrent's download_path; both it and download_dir are kept, with the
+# ".part" suffix, because Transmission can hold the files in either place.
+
+
+def files_of(*names):
+    return [{"name": name} for name in names]
+
+
+def paths(torrent, incomplete_dir=None):
+    return ro.torrent_file_paths(torrent, incomplete_dir)
+
+
+def test_complete_torrent_uses_save_path():
+    t = {"download_dir": "/data/torrents/completed", "percent_done": 1.0, "files": files_of("file1.txt", "file2.txt")}
+    assert paths(t, "/tmp/incomplete") == {
+        os.path.normpath("/data/torrents/completed/file1.txt"),
+        os.path.normpath("/data/torrents/completed/file2.txt"),
+    }
+
+
+def test_incomplete_torrent_with_download_path():
+    t = {"download_dir": "/data/torrents/completed", "percent_done": 0.5, "files": files_of("partial.txt")}
+    assert os.path.normpath("/tmp/incomplete/partial.txt") in paths(t, "/tmp/incomplete")
+    assert os.path.normpath("/tmp/incomplete/partial.txt.part") in paths(t, "/tmp/incomplete")
+
+
+def test_incomplete_torrent_without_download_path():
+    t = {"download_dir": "/data/torrents/completed", "percent_done": 0.5, "files": files_of("file.txt")}
+    assert paths(t) == {
+        os.path.normpath("/data/torrents/completed/file.txt"),
+        os.path.normpath("/data/torrents/completed/file.txt.part"),
+    }
+
+
+def test_single_file_torrent():
+    t = {"download_dir": "/mnt/media", "percent_done": 1.0, "files": files_of("Torrent.NAME.X.iso")}
+    assert paths(t) == {os.path.normpath("/mnt/media/Torrent.NAME.X.iso")}
+
+
+def test_multi_file_torrent_preserves_structure():
+    t = {"download_dir": "/data/tv", "percent_done": 1.0, "files": files_of("intro.mp4", "main.mp4", "outro.mp4")}
+    assert paths(t) == {os.path.normpath(f"/data/tv/{name}") for name in ("intro.mp4", "main.mp4", "outro.mp4")}
+
+
+def test_path_normalization_windows_style_paths():
+    t = {"download_dir": "/data/torrents/", "percent_done": 1.0, "files": files_of("sub/../file.txt")}
+    assert paths(t) == {os.path.normpath("/data/torrents/file.txt")}
+
+
+def handler(tmp_path, empty_after):
+    root = tmp_path / "data"
+    root.mkdir(exist_ok=True)
+    orphaned = f"orphaned:\n  empty_after_x_days: {empty_after}\n"
+    module = ro.RemoveOrphaned(context(tmp_path, root, [], orphaned))
+    return module, root
+
+
+def test_handle_orphaned_returns_parent_path_on_success(tmp_path, monkeypatch):
+    module, root = handler(tmp_path, 0)
+    monkeypatch.setattr(ro, "delete_files", lambda src: None)
+    result = module._handle(str(root / "subdir" / "orphaned_file.txt"), delete=True)
+    assert result == str(root / "subdir")
+
+
+def test_delete_mode_calls_delete_files(tmp_path, monkeypatch):
+    module, root = handler(tmp_path, 0)
+    deleted = []
+    monkeypatch.setattr(ro, "delete_files", deleted.append)
+    assert module._handle(str(root / "subdir" / "orphaned_file.txt"), delete=True) is not None
+    assert deleted == [str(root / "subdir" / "orphaned_file.txt")]
+
+
+def test_move_mode_calls_move_files(tmp_path, monkeypatch):
+    module, root = handler(tmp_path, 30)
+    moved = []
+    monkeypatch.setattr(ro, "move_files", lambda src, dest, mod: moved.append((src, dest)))
+    assert module._handle(str(root / "subdir" / "orphaned_file.txt"), delete=False) is not None
+    assert moved == [
+        (str(root / "subdir" / "orphaned_file.txt"), os.path.join(module.orphaned_dir, "subdir", "orphaned_file.txt"))
+    ]
+
+
+def test_permission_error_returns_none(tmp_path, monkeypatch):
+    module, root = handler(tmp_path, 0)
+
+    def deny(src):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(ro, "delete_files", deny)
+    assert module._handle(str(root / "subdir" / "file.txt"), delete=True) is None
+
+
+def test_delete_error_falls_back_to_move(tmp_path, monkeypatch):
+    module, root = handler(tmp_path, 0)
+    deleted, moved = [], []
+
+    def fail(src):
+        deleted.append(src)
+        raise OSError("disk error")
+
+    monkeypatch.setattr(ro, "delete_files", fail)
+    monkeypatch.setattr(ro, "move_files", lambda src, dest, mod: moved.append((src, dest)))
+    assert module._handle(str(root / "subdir" / "file.txt"), delete=True) is not None
+    assert len(deleted) == 1 and len(moved) == 1
+
+
+def age_filter(tmp_path, minutes, now, remote=None, root=None):
+    root = root or (tmp_path / "data")
+    if not isinstance(root, str):
+        root.mkdir(exist_ok=True)
+    root_line = root if isinstance(root, str) else root.as_posix()
+    remote_line = f"  remote_dir: '{remote.as_posix()}'\n" if remote else ""
+    path = tmp_path / "config.yml"
+    path.write_text(
+        f"directory:\n  root_dir: '{root_line}'\n{remote_line}orphaned:\n  min_file_age_minutes: {minutes}\n", encoding="utf-8"
+    )
+    config = Config(str(path), {"rem_orphaned": True})
+    return ro.RemoveOrphaned(transmission_manage.Context(FakeClient([]), config, Webhooks(), None), now=lambda: now)
+
+
+def test_new_orphan_protected_old_orphan_eligible(tmp_path):
+    now = time.time()
+    new, old = tmp_path / "orphan_new.mkv", tmp_path / "orphan_old.mkv"
+    new.write_text("x")
+    old.write_text("y")
+    os.utime(new, (now, now))
+    os.utime(old, (now - 30 * DAY, now - 30 * DAY))
+    result = age_filter(tmp_path, 14400, now)._filter_too_new({str(new), str(old)})
+    assert result == {str(old)}
+
+
+def test_recent_hardlinked_orphan_is_protected(tmp_path):
+    now = time.time()
+    tracked = tmp_path / "tracked.mkv"
+    tracked.write_text("data")
+    link = tmp_path / "orphan_hardlink.mkv"
+    os.link(tracked, link)
+    os.utime(tracked, (now - 3600, now - 3600))  # shared inode: both names are an hour old
+    assert age_filter(tmp_path, 360, now)._filter_too_new({str(link)}) == set()
+
+
+def test_age_protection_disabled_is_noop(tmp_path):
+    now = time.time()
+    f = tmp_path / "f.mkv"
+    f.write_text("z")
+    assert age_filter(tmp_path, 0, now)._filter_too_new({str(f)}) == {str(f)}
+
+
+def test_unreadable_file_is_left_eligible(tmp_path):
+    missing = str(tmp_path / "does_not_exist.mkv")
+    assert age_filter(tmp_path, 14400, time.time())._filter_too_new({missing}) == {missing}
+
+
+def test_too_new_orphan_protected_with_mapped_remote_dir(tmp_path):
+    now = time.time()
+    host = tmp_path / "host"
+    orphan = host / "Movies" / "orphan_new.mkv"
+    orphan.parent.mkdir(parents=True)
+    orphan.write_text("x")
+    os.utime(orphan, (now, now))
+    module = age_filter(tmp_path, 14400, now, remote=host, root="/data/torrents")
+    assert module._filter_too_new({os.path.normpath("/data/torrents/Movies/orphan_new.mkv")}) == set()
+
+
+def test_nfd_disk_file_matches_nfc_torrent_file():
+    nfc_path = "/data/torrents/Album/06 - Paraísos Quemados.flac"
+    nfd_path = "/data/torrents/Album/06 - Paraísos Quemados.flac"
+    assert nfc_path != nfd_path
+    assert ro.find_orphaned_files({nfd_path}, {nfc_path}) == set()
+
+
+def test_nfc_disk_file_matches_nfd_torrent_file():
+    nfc_path = "/data/torrents/Album/Album-Né.flac"
+    nfd_path = "/data/torrents/Album/Album-N" + "é" + ".flac"
+    assert ro.find_orphaned_files({nfc_path}, {nfd_path}) == set()
+
+
+def test_true_orphan_still_detected():
+    tracked = {"/data/torrents/Album/track1.flac"}
+    on_disk = tracked | {"/data/torrents/Album/Paraísos Quemados.flac", "/data/torrents/Album/untracked.txt"}
+    assert ro.find_orphaned_files(on_disk, tracked) == on_disk - tracked
+
+
+def test_original_disk_paths_preserved():
+    nfd_orphan = "/data/torrents/Album/N" + "é" + "w Orphan.flac"
+    nfc_tracked = "/data/torrents/Album/Tr" + "aí" + "cked.flac"
+    nfd_tracked = "/data/torrents/Album/Tr" + "aí" + "cked.flac"
+    assert ro.find_orphaned_files({nfd_orphan, nfd_tracked}, {nfc_tracked}) == {nfd_orphan}
+
+
+def test_empty_inputs():
+    assert ro.find_orphaned_files(set(), set()) == set()
+    assert ro.find_orphaned_files({"a.flac"}, set()) == {"a.flac"}
+    assert ro.find_orphaned_files(set(), {"a.flac"}) == set()
+
+
+def test_japanese_and_cyrillic_paths():
+    nfc_path = "/data/torrents/ドライブ/track.flac"
+    nfd_path = "/data/torrents/ドライブ/track.flac"
+    assert ro.find_orphaned_files({nfd_path}, {nfc_path}) == set()
