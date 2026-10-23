@@ -7,6 +7,7 @@ use are ignored; they are logged as warnings so a typo is visible. A value of th
 from __future__ import annotations
 
 import logging
+import os
 
 from modules.util import Failed
 from modules.util import load_yaml
@@ -63,8 +64,15 @@ HOOKS_SCHEMA = {
 
 WEBHOOK_KEYS = ("error", "run_start", "run_end", "function")
 
+ORPHANED_SCHEMA = {
+    "empty_after_x_days": ((int, type(None)), None),
+    "min_file_age_minutes": ((int,), 0),
+    "exclude_patterns": ((list, type(None)), None),
+    "max_orphaned_files_to_delete": ((int,), 50),
+}
+
 # Validated by the module that consumes them once it is ported; accepted as-is until then.
-PENDING_SECTIONS = ("share_limits", "orphaned")
+PENDING_SECTIONS = ("share_limits",)
 
 QBIT_ONLY_SECTIONS = {
     "qbt": "use the 'transmission' section",
@@ -183,6 +191,7 @@ class Config:
             "nohardlinks",
             "webhooks",
             "hooks",
+            "orphaned",
             *PENDING_SECTIONS,
             *QBIT_ONLY_SECTIONS,
         }
@@ -195,11 +204,32 @@ class Config:
         self.settings = _check_section("settings", data.get("settings"), SETTINGS_SCHEMA)
         self.settings["rem_unregistered_ignore_list"] = list(self.settings["rem_unregistered_ignore_list"] or [])
         self.directory = _check_section("directory", data.get("directory"), DIRECTORY_SCHEMA)
+        self.orphaned = _check_section("orphaned", data.get("orphaned"), ORPHANED_SCHEMA)
+        self._resolve_orphaned()
         self.tracker = _check_tracker(data.get("tracker"))
         self.nohardlinks = _check_nohardlinks(data.get("nohardlinks"))
         self.webhooks = _check_webhooks(data.get("webhooks"))
         self.hooks = _check_section("hooks", data.get("hooks"), HOOKS_SCHEMA)
         self.pending = {name: data.get(name) for name in PENDING_SECTIONS if name in data}
+
+    def _resolve_orphaned(self):
+        """Upstream defaults: orphaned_dir is remote_dir/orphaned_data, and its own files are never orphans."""
+        orphaned = self.orphaned
+        orphaned["exclude_patterns"] = list(orphaned["exclude_patterns"] or [])
+        if orphaned["max_orphaned_files_to_delete"] < -1:
+            raise Failed("Config error: 'orphaned.max_orphaned_files_to_delete' must be -1 or more")
+        if orphaned["min_file_age_minutes"] < 0:
+            raise Failed("Config error: 'orphaned.min_file_age_minutes' must be 0 or more")
+        if not self.commands["rem_orphaned"]:
+            return
+        root = self.directory["root_dir"]
+        if not root:
+            raise Failed("Config error: rem_orphaned needs directory.root_dir")
+        if not self.directory["orphaned_dir"]:
+            self.directory["orphaned_dir"] = os.path.join(self.directory["remote_dir"] or root, "orphaned_data")
+        pattern = f"**{os.sep}{os.path.basename(self.directory['orphaned_dir'].rstrip(os.sep))}{os.sep}*"
+        if pattern not in orphaned["exclude_patterns"]:
+            orphaned["exclude_patterns"].append(pattern)
 
     @staticmethod
     def _merge_commands(config_commands, cli_commands):

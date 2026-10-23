@@ -12,6 +12,7 @@ import sys
 import time
 
 from modules.config import Config
+from modules.core import remove_orphaned
 from modules.core import remove_unregistered
 from modules.core import tag_nohardlinks
 from modules.hooks import Hooks
@@ -40,6 +41,7 @@ COMMANDS = {
     "rem_unregistered": remove_unregistered.run,
     "tag_tracker_error": remove_unregistered.run,
     "tag_nohardlinks": tag_nohardlinks.run,
+    "rem_orphaned": remove_orphaned.run,
 }
 
 
@@ -142,6 +144,10 @@ def main(argv=None):
                 continue
             done.add(command)
             stats[name] = command(context)
+        # As upstream, the orphaned folder is emptied after the commands (unless skip_cleanup).
+        emptied = remove_orphaned.cleanup_orphaned_dir(context)
+        if emptied:
+            stats["orphaned_emptied"] = emptied
     except (TransmissionError, Failed) as err:
         logger.critical("%s", err)
         webhooks.error(str(err))

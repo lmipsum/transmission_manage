@@ -42,7 +42,7 @@ configuration.
 | Config, `dry_run`, webhooks | done | qbit_manage key names. Webhooks are plain URLs; Notifiarr and Apprise are not ported. |
 | `remove_unregistered` + `tag_tracker_error` | done | Tracker state is read from `tracker_stats`: a successful announce on any tracker means working (qBittorrent's WORKING); not yet announced, queued or announcing means inconclusive (NOT_CONTACTED / UPDATING); backup trackers are ignored. |
 | `tag_nohardlinks` | done | The `nohardlinks` section is keyed by Transmission label, since Transmission has no categories; `ignore_category_dir` is therefore not available. |
-| `remove_orphaned` | planned | |
+| `remove_orphaned` | done | Torrent file paths are `download_dir` + `files`; for torrents that are not complete, the session's `incomplete_dir` and the `.part` suffix stand in for qBittorrent's download path. Download directories of torrents are kept when empty folders are removed, in place of category save paths. |
 | `recheck` | planned | |
 | Tracker tagging | planned | Transmission has free-form `labels` instead of qBittorrent tags. |
 | `share_limits` | later | |
