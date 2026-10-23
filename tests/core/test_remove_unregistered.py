@@ -249,3 +249,173 @@ def test_cli_end_to_end_runs_the_module_once(tmp_path, jsonrpc_server):
     assert methods.count("torrent_get") == 1  # one run serves both commands
     removes = [r["body"]["params"] for r in jsonrpc_server.requests if r["body"].get("method") == "torrent_remove"]
     assert removes == [{"ids": ["d" * 40], "delete_local_data": True}]
+
+
+# --- upstream cases -----------------------------------------------------------------------------------
+# Ported from qbit_manage's tests/core/test_remove_unregistered.py (MIT, see NOTICE). The BHD-specific checks
+# and the hashes filter are not ported, as the code paths they test are not part of this port.
+
+
+def remover(tmp_path, items=(), settings="", dry_run=False, hooks=None, tag_error=False):
+    ctx, client = make_context(
+        tmp_path, list(items), {"dry_run": dry_run, "tag_tracker_error": tag_error}, settings=settings, hooks=hooks
+    )
+    return ru.RemoveUnregistered(ctx, now=lambda: NOW), client
+
+
+def test_is_within_grace_when_grace_disabled(tmp_path):
+    r, _ = remover(tmp_path, settings="settings:\n  rem_unregistered_grace_minutes: 0\n")
+    assert r.is_within_grace(torrent(1, [], added=NOW - 100)) == (False, 0.0)
+
+
+def test_is_within_grace_when_torrent_within_window(tmp_path):
+    r, _ = remover(tmp_path, settings="settings:\n  rem_unregistered_grace_minutes: 60\n")
+    within, age = r.is_within_grace(torrent(1, [], added=NOW - 30 * 60))
+    assert within is True and 29 < age < 31
+
+
+def test_is_within_grace_when_torrent_outside_window(tmp_path):
+    r, _ = remover(tmp_path, settings="settings:\n  rem_unregistered_grace_minutes: 30\n")
+    within, age = r.is_within_grace(torrent(1, [], added=NOW - 60 * 60))
+    assert within is False and 59 < age < 61
+
+
+def test_is_within_grace_no_added_on_field(tmp_path):
+    r, _ = remover(tmp_path)
+    t = torrent(1, [])
+    del t["added_date"]
+    assert r.is_within_grace(t) == (False, 0.0)
+
+
+def test_is_within_grace_invalid_added_on_value(tmp_path):
+    r, _ = remover(tmp_path)
+    assert r.is_within_grace(torrent(1, [], added="not_a_timestamp")) == (False, 0.0)
+
+
+def test_max_limit_disabled_allows_deletion(tmp_path):
+    r, client = remover(tmp_path, settings="settings:\n  rem_unregistered_max_torrents: 0\n")
+    r.check_max_limit_and_delete(torrent(1, []), tracker(UNREG), False, set())
+    assert client.calls[0][0] == "remove" and r.tracker_del_count == {}
+
+
+def test_max_limit_not_reached_allows_deletion(tmp_path):
+    r, client = remover(tmp_path, settings="settings:\n  rem_unregistered_max_torrents: 5\n")
+    r.check_max_limit_and_delete(torrent(1, []), tracker(UNREG, host="t1.example"), False, set())
+    assert client.calls[0][0] == "remove" and r.tracker_del_count["t1.example"] == 1
+
+
+def test_max_limit_reached_skips_deletion(tmp_path):
+    r, client = remover(tmp_path, settings="settings:\n  rem_unregistered_max_torrents: 2\n")
+    r.tracker_del_count["t1.example"] = 2
+    r.check_max_limit_and_delete(torrent(2, []), tracker(UNREG, host="t1.example"), False, set())
+    assert client.calls == [] and r.tracker_del_count["t1.example"] == 2
+
+
+def test_remove_previous_errors_untagged_working_torrent(tmp_path):
+    t = torrent(1, [tracker("Success")], labels=["issue"])
+    r, client = remover(tmp_path, [t])
+    r.run()
+    assert client.calls == [("set_labels", (t["hash_string"],), ())]
+    assert r.stats["untagged"] == 1
+
+
+def test_remove_previous_errors_dry_run_suppresses_remove_tags(tmp_path):
+    t = torrent(1, [tracker("Success")], labels=["issue"])
+    r, client = remover(tmp_path, [t], dry_run=True)
+    r.run()
+    assert client.calls == [] and r.stats["untagged"] == 1
+
+
+def test_del_unregistered_cross_seed_with_working_tracker(tmp_path):
+    t = torrent(1, [])
+    r, client = remover(tmp_path)
+    r.check_max_limit_and_delete(t, tracker(UNREG), True, {t["name"]})
+    assert client.calls == [("remove", (t["hash_string"],), False)]
+    assert (r.stats["deleted"], r.stats["deleted_contents"]) == (1, 0)
+    assert r.events["rem_unregistered"][0]["torrents_deleted_and_contents"] is False
+
+
+def test_del_unregistered_cross_seed_all_broken(tmp_path):
+    t = torrent(1, [])
+    r, client = remover(tmp_path)
+    r.check_max_limit_and_delete(t, tracker(UNREG), True, set())
+    assert client.calls == [("remove", (t["hash_string"],), True)]
+    assert r.stats["deleted_contents"] == 1
+
+
+def test_del_unregistered_no_cross_seed_deletes_content(tmp_path):
+    t = torrent(1, [])
+    r, client = remover(tmp_path)
+    r.check_max_limit_and_delete(t, tracker(UNREG), False, {t["name"]})
+    assert client.calls == [("remove", (t["hash_string"],), True)]
+
+
+def test_del_unregistered_dry_run_suppresses_delete(tmp_path):
+    r, client = remover(tmp_path, dry_run=True)
+    r.check_max_limit_and_delete(torrent(1, []), tracker(UNREG), False, set())
+    assert client.calls == [] and r.stats["deleted_contents"] == 1
+
+
+def test_tag_tracker_error_adds_tag(tmp_path):
+    t = torrent(1, [])
+    r, client = remover(tmp_path, tag_error=True)
+    r.tag_tracker_error(t, tracker("Connection timed out", succeeded=False))
+    assert client.calls == [("set_labels", (t["hash_string"],), ("issue",))]
+    assert r.stats["tagged"] == 1
+
+
+def test_tag_tracker_error_dry_run_suppresses_add_tags(tmp_path):
+    r, client = remover(tmp_path, tag_error=True, dry_run=True)
+    r.tag_tracker_error(torrent(1, []), tracker("Connection timed out", succeeded=False))
+    assert client.calls == [] and r.stats["tagged"] == 1
+
+
+def removals(tmp_path, trackers):
+    r, client = remover(tmp_path, [torrent(1, trackers)], settings="settings:\n  rem_unregistered_grace_minutes: 0\n")
+    r.run()
+    return [c for c in client.calls if c[0] == "remove"]
+
+
+def test_process_issues_detects_unregistered_when_not_last_tracker(tmp_path):
+    trackers = [tracker("some other tracker error", host="a:1"), tracker("err: unregistered torrent", host="b:1")]
+    assert removals(tmp_path, trackers)
+
+
+def test_process_issues_none_msg_earlier_tracker_still_detects(tmp_path):
+    first = tracker("x", succeeded=False, host="a:1")
+    first["last_announce_result"] = None
+    assert removals(tmp_path, [first, tracker("err: unregistered torrent", host="b:1")])
+
+
+def test_process_issues_single_unregistered_still_deletes(tmp_path):
+    assert removals(tmp_path, [tracker("Unregistered torrent")])
+
+
+def test_process_issues_deletes_despite_host_not_found_sibling(tmp_path):
+    trackers = [tracker("Host not found (authoritative)", host="a:1"), tracker("err: unregistered torrent", host="b:1")]
+    assert removals(tmp_path, trackers)
+
+
+def test_process_issues_deletes_when_sibling_tracker_times_out(tmp_path):
+    trackers = [tracker("Connection timed out", host="a:1"), tracker("Unregistered torrent", host="b:1")]
+    assert removals(tmp_path, trackers)
+
+
+def test_process_issues_defers_when_tracker_still_updating(tmp_path):
+    updating = tracker("", succeeded=False, state=3, host="a:1")  # announcing right now
+    assert removals(tmp_path, [updating, tracker("Unregistered torrent", host="b:1")]) == []
+
+
+def test_process_issues_skips_when_any_tracker_working(tmp_path):
+    assert removals(tmp_path, [tracker("Success", host="a:1"), tracker("Unregistered torrent", host="b:1")]) == []
+
+
+def test_grace_period_blocks_deletion(tmp_path):
+    r, _ = remover(tmp_path, settings="settings:\n  rem_unregistered_grace_minutes: 60\n")
+    within, age = r.is_within_grace(torrent(1, [], added=NOW - 300))
+    assert within is True and 4 < age < 6
+
+
+def test_unregistered_message_list_entries_are_detected():
+    for message in ru.TorrentMessages.UNREGISTERED_MSGS:
+        assert list_in_text(message, ru.TorrentMessages.UNREGISTERED_MSGS)
