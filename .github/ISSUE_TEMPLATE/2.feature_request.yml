@@ -1,0 +1,32 @@
+name: Feature Request
+description: Port a qbit_manage feature or improve the port.
+title: '[FR]: '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: >
+        This project ports qbit_manage. Features that qbit_manage does not have belong in a fork or behind
+        the `pre_remove` hook; a new generic extension point can be proposed here.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem? Please elaborate.
+      description: A clear and concise description of what the problem is.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+      description: Which qbit_manage module or option should behave how on Transmission?
+    validations:
+      required: true
+  - type: checkboxes
+    id: kind
+    attributes:
+      label: Does your request involve any of the following?
+      options:
+        - label: Porting an existing qbit_manage feature
+        - label: A new config option
+        - label: A new extension point (hook)
