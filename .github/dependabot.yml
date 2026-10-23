@@ -1,0 +1,21 @@
+version: 2
+
+# Weekly grouped PRs against dev; a bump reaches main only through the normal merge.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+    groups:
+      python:
+        patterns: ["*"]

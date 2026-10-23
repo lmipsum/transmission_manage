@@ -1,0 +1,16 @@
+# Same rule set as qbit_manage, so ported code keeps its shape.
+line-length = 130
+target-version = "py310"
+
+[lint]
+select = [
+    "I",   # isort - import order
+    "UP",  # pyupgrade
+    "T10", # debugger
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+]
+
+[lint.isort]
+force-single-line = true
