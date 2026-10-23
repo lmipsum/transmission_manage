@@ -12,6 +12,7 @@ import sys
 import time
 
 from modules.config import Config
+from modules.core import recheck
 from modules.core import remove_orphaned
 from modules.core import remove_unregistered
 from modules.core import tag_nohardlinks
@@ -38,6 +39,7 @@ COMMAND_ORDER = (
 # command name -> callable(context) -> dict of stats. Filled in as modules are ported. As in qbit_manage, one
 # module can serve several commands; it then runs once and reads the command switches itself.
 COMMANDS = {
+    "recheck": recheck.run,
     "rem_unregistered": remove_unregistered.run,
     "tag_tracker_error": remove_unregistered.run,
     "tag_nohardlinks": tag_nohardlinks.run,
