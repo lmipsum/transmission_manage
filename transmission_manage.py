@@ -25,7 +25,7 @@ from modules.transmission import TransmissionError
 from modules.util import Failed
 from modules.webhooks import Webhooks
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
 
 # Execution order follows qbit_manage: fix state first, then tag, then remove.
 COMMAND_ORDER = (
