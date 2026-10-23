@@ -43,6 +43,7 @@ SETTINGS_SCHEMA = {
     "nohardlinks_tag": ((str,), "noHL"),
     "stalled_tag": ((str, type(None)), "stalledDL"),
     "private_tag": ((str, type(None)), None),
+    "tag_stalled_torrents": ((bool,), True),
     "tag_nohardlinks_filter_completed": ((bool,), True),
     "rem_unregistered_filter_completed": ((bool,), False),
     "rem_unregistered_ignore_list": ((list, type(None)), None),
@@ -122,7 +123,7 @@ def _check_tracker(data):
         # qbit_manage allows several URL keywords per entry, separated by '|'.
         for part in str(keyword).split("|"):
             if part.strip():
-                result[part.strip().lower()] = tags
+                result[part.strip()] = tags  # matched case-sensitively, as upstream
     return result
 
 

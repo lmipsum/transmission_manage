@@ -27,7 +27,8 @@ transmission:
 settings:
   tracker_error_tag: issue # Label for torrents without a working tracker.
   nohardlinks_tag: noHL # Label for torrents without hardlinks outside the root dir.
-  stalled_tag: stalledDL
+  stalled_tag: stalledDL # Label for torrents stalled while downloading (tag_update).
+  tag_stalled_torrents: True # Label stalled downloads with stalled_tag when running tag_update.
   private_tag: null # Label for private torrents (null to disable).
   tag_nohardlinks_filter_completed: True # Only check completed torrents.
   rem_unregistered_filter_completed: False # Only remove completed torrents.
@@ -49,6 +50,9 @@ tracker:
     tag: TrackerOne
   tracker-two.example.net|tracker-two-backup.example.net:
     tag: [TrackerTwo, private]
+  # The special key 'other' tags every torrent whose tracker matched none of the keywords above.
+  other:
+    tag: other
 
 nohardlinks:
   # Label torrents whose files are not hardlinked outside root_dir (e.g. not imported into a media library).

@@ -63,7 +63,7 @@ configuration.
 | `tag_nohardlinks` | done | The `nohardlinks` section is keyed by Transmission label, since Transmission has no categories; `ignore_category_dir` is therefore not available. |
 | `remove_orphaned` | done | Torrent file paths are `download_dir` + `files`; for torrents that are not complete, the session's `incomplete_dir` and the `.part` suffix stand in for qBittorrent's download path. Download directories of torrents are kept when empty folders are removed, in place of category save paths. |
 | `recheck` | done | A per-torrent ratio limit exists only with `seed_ratio_mode` 1; global and unlimited modes count as no limit, as upstream treats qBittorrent's -2 and -1. Transmission has no seeding-time limit (its idle limit measures inactivity), so that part of upstream's check always reads as no limit. |
-| Tracker tagging | planned | Transmission has free-form `labels` instead of qBittorrent tags. |
+| `tag_update` | done | Tags are Transmission `labels`, added to the existing ones. qBittorrent's `stalledDL` is a downloading torrent with `is_stalled`; privacy comes from `is_private`. Tracker keywords match the announce URLs case-sensitively, as upstream; `other` and the host fallback work as upstream. |
 | `share_limits` | later | |
 | Categories and other qBittorrent-only features | out of scope | No Transmission equivalent. |
 
