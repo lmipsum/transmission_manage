@@ -1,5 +1,5 @@
 # Example configuration. These are NOT defaults: review every value before use.
-# Section and key names follow qbit_manage where Transmission allows it; unknown keys are rejected.
+# Section and key names follow qbit_manage where Transmission allows it; unknown keys are ignored with a warning.
 
 commands:
   # Commands set here OVERRIDE the command line, as in qbit_manage. Remove the section to use CLI flags only.
@@ -36,6 +36,13 @@ settings:
     - example placeholder words
   rem_unregistered_grace_minutes: 10 # Skip torrents added less than this many minutes ago.
   rem_unregistered_max_torrents: 10 # Max removals per tracker per run.
+  share_limits_tag: ~share_limit # Prefix of the label naming each torrent's share limit group and priority.
+  share_limits_min_seeding_time_tag: MinSeedTimeNotReached # Label while min_seeding_time is not reached.
+  share_limits_min_num_seeds_tag: MinSeedsNotMet # Label while min_num_seeds is not met.
+  share_limits_last_active_tag: LastActiveLimitNotReached # Label while min_last_active is not reached.
+  share_limits_filter_completed: True # Only apply share limits to completed torrents.
+  # Turn off Transmission's session-wide ratio and idle limits while share_limits runs, so the groups decide.
+  disable_qbt_default_share_limits: True
 
 directory:
   root_dir: "/path/to/torrents/" # Download root used for orphaned files and noHL.
@@ -85,10 +92,61 @@ orphaned:
   # Nothing is moved when more files than this qualify in one run (-1 disables the safeguard).
   max_orphaned_files_to_delete: 50
 
+share_limits:
+  # Each torrent is matched with the first group, in priority order, whose filters it passes, and only that one.
+  # The group name can be any string. Filters use Transmission labels (there are no categories).
+  # Time values are minutes or strings such as "2h30m" or "7d"; sizes are bytes or strings such as "500MB".
+  noHL:
+    # <MANDATORY> priority: lower numbers are matched first; must be unique.
+    priority: 1
+    # <OPTIONAL> include_all_tags / include_any_tags / exclude_all_tags / exclude_any_tags: label filters.
+    include_all_tags:
+      - noHL
+    exclude_any_tags:
+      - keep-seeding
+    # <OPTIONAL> min_torrent_size / max_torrent_size: size filters.
+    # <OPTIONAL> max_ratio: -2 Transmission's global limit, -1 no limit (default), else the ratio.
+    max_ratio: 5.0
+    # <OPTIONAL> max_seeding_time: -1 no limit (default). Transmission has no seeding-time limit, so a torrent
+    # that has seeded this long is stopped by transmission_manage on its next run.
+    max_seeding_time: 129600
+    # <OPTIONAL> min_seeding_time: the torrent is protected (tag added, limits lifted) until it has seeded this
+    # long. Needs max_ratio > 0.
+    min_seeding_time: 43200
+    # <OPTIONAL> max_last_active: limit reached after this long without activity (-1 disables it).
+    max_last_active: -1
+    # <OPTIONAL> min_last_active: protect the torrent until it has been inactive this long.
+    min_last_active: 0
+    # <OPTIONAL> min_num_seeds: protect the torrent while the swarm has fewer seeds than this.
+    min_num_seeds: 0
+    # <OPTIONAL> limit_upload_speed: KiB/s, -1 unlimited. enable_group_upload_speed splits it across the group.
+    limit_upload_speed: -1
+    enable_group_upload_speed: false
+    # <OPTIONAL> upload_speed_on_limit_reached: with cleanup false, throttle to this KiB/s (-1 unlimited)
+    # instead of stopping once a limit is reached. 0 disables it.
+    upload_speed_on_limit_reached: 0
+    # <OPTIONAL> cleanup: remove torrents that reached a limit (through the pre_remove hook). Contents shared
+    # with a working torrent of the same name are kept.
+    cleanup: false
+    # <OPTIONAL> share_limit_action: Default or Stop. Transmission can only stop a torrent at a limit.
+    share_limit_action: Default
+    # <OPTIONAL> resume_torrent_after_change: resume a stopped, complete torrent after its limits change.
+    resume_torrent_after_change: true
+    # <OPTIONAL> add_group_to_tag: label the torrent with share_limits_tag, priority and group name.
+    add_group_to_tag: true
+    # <OPTIONAL> custom_tag: use this label instead of the generated one; must be unique.
+    # <OPTIONAL> reset_upload_speed_on_unmet_minimums: lift the upload limit while a minimum protects the torrent.
+    reset_upload_speed_on_unmet_minimums: true
+  default:
+    priority: 999
+    max_ratio: -1
+    max_seeding_time: -1
+
 hooks:
   # <OPTIONAL> pre_remove: command run before every torrent removal. It gets a JSON object on stdin
-  # (command, hash, name, tracker, status, delete_data, dry_run); exit status 0 lets the removal proceed,
-  # anything else skips it. A hook that fails to run or exceeds the timeout also skips the removal.
+  # (command, hash, name, tracker, delete_data, dry_run, plus status for rem_unregistered or grouping and reason
+  # for share_limits); exit status 0 lets the removal proceed, anything else skips it. A hook that fails to run
+  # or exceeds the timeout also skips the removal.
   pre_remove: null
   timeout: 60 # Seconds.
 
@@ -100,3 +158,4 @@ webhooks:
   function:
     rem_unregistered: null
     rem_orphaned: null
+    share_limits: null # Also receives cleanup_share_limits.

@@ -5,8 +5,8 @@ share limits are already met, and one at 0% is verified when a torrent with the 
 
 Transmission-specific: a per-torrent ratio limit exists only when seed_ratio_mode is 1; the global (0) and
 unlimited (2) modes count as no limit, as upstream treats qBittorrent's -2 (global) and -1 (none). Transmission
-has no seeding-time limit (its idle limit measures inactivity, not seeding time), so that half of upstream's check
-always reads as no limit.
+has no seeding-time limit (its idle limit measures inactivity, not seeding time); the one share_limits enforces
+for the torrent's group is used instead.
 """
 
 from __future__ import annotations
@@ -14,10 +14,22 @@ from __future__ import annotations
 import logging
 
 from modules import transmission as tr
+from modules.core.share_limits import seeding_time_limit
 
 logger = logging.getLogger("transmission_manage")
 
-FIELDS = ["name", "status", "percent_done", "size_when_done", "upload_ratio", "seed_ratio_mode", "seed_ratio_limit"]
+FIELDS = [
+    "name",
+    "status",
+    "percent_done",
+    "size_when_done",
+    "upload_ratio",
+    "seed_ratio_mode",
+    "seed_ratio_limit",
+    "seconds_seeding",
+    "labels",
+    "total_size",
+]
 SEED_RATIO_SINGLE = 1
 
 
@@ -28,13 +40,15 @@ def ratio_limit(torrent):
     return -1
 
 
-def should_resume(torrent):
+def should_resume(torrent, time_limit=-1):
     """Upstream: resume when no limit is set, or the set limits are not reached yet."""
     limit = ratio_limit(torrent)
-    if limit < 0:
+    if limit < 0 and time_limit < 0:
         return True
     ratio = tr.ratio(torrent)
-    return (ratio if ratio is not None else 0.0) < limit
+    ratio_unmet = limit < 0 or (ratio if ratio is not None else 0.0) < limit
+    time_unmet = time_limit < 0 or (torrent.get("seconds_seeding") or 0) < time_limit * 60
+    return ratio_unmet and time_unmet
 
 
 class ReCheck:
@@ -66,7 +80,8 @@ class ReCheck:
         name = torrent["name"]
         progress = torrent.get("percent_done") or 0
         if progress >= 1:
-            if should_resume(torrent):
+            time_limit = seeding_time_limit(self.ctx.config, torrent)
+            if should_resume(torrent, time_limit):
                 self.stats["resumed"] += 1
                 self.events["resumed"].append(name)
                 logger.info("%s - %s", "Not Resuming" if self.dry_run else "Resuming", name)
@@ -74,10 +89,12 @@ class ReCheck:
                     self.client.start([torrent["hash_string"]])
             else:
                 logger.debug(
-                    "Not resuming %s: ratio %.2f has reached the limit %.2f",
+                    "Not resuming %s: ratio %.2f vs limit %.2f, seeding %d min vs limit %d min",
                     name,
                     tr.ratio(torrent) or 0.0,
                     ratio_limit(torrent),
+                    (torrent.get("seconds_seeding") or 0) // 60,
+                    time_limit,
                 )
         elif progress == 0 and name in complete_names and torrent.get("status") not in (tr.STATUS_CHECK_WAIT, tr.STATUS_CHECK):
             self.stats["rechecked"] += 1

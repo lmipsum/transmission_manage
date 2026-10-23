@@ -47,6 +47,11 @@ TRACKER_ACTIVE = 3  # announcing or scraping right now
 RATIO_NA = -1
 RATIO_INF = -2
 
+# tr_ratiolimit (seed_ratio_mode) and tr_idlelimit (seed_idle_mode)
+LIMIT_GLOBAL = 0
+LIMIT_SINGLE = 1
+LIMIT_UNLIMITED = 2
+
 JSONRPC_MIN_SEMVER = (6, 0, 0)
 SESSION_ID_HEADER = "X-Transmission-Session-Id"
 RPC_VERSION_HEADER = "X-Transmission-Rpc-Version"
@@ -97,6 +102,14 @@ def _snake_keys(value):
     return value
 
 
+# The legacy session arguments are kebab-case except for these camelCase ones.
+_LEGACY_CAMEL_SESSION = {"seed_ratio_limit", "seed_ratio_limited"}
+
+
+def _legacy_session_name(name):
+    return _snake_to_camel(name) if name in _LEGACY_CAMEL_SESSION else _snake_to_kebab(name)
+
+
 def _legacy_params(method, params):
     """Translate snake_case params to the legacy protocol's naming for this method."""
     params = dict(params)
@@ -104,11 +117,13 @@ def _legacy_params(method, params):
         params["fields"] = [_snake_to_camel(field) for field in params["fields"]]
         return params
     if method == "session_get" and "fields" in params:
-        params["fields"] = [_snake_to_kebab(field) for field in params["fields"]]
+        params["fields"] = [_legacy_session_name(field) for field in params["fields"]]
         return params
+    if method == "session_set":
+        return {_legacy_session_name(key): item for key, item in params.items()}
     if method == "torrent_set":
         return {key if key == "ids" else _snake_to_camel(key): item for key, item in params.items()}
-    if method in ("torrent_remove", "session_set", "free_space"):
+    if method in ("torrent_remove", "free_space"):
         return {key if key == "ids" else _snake_to_kebab(key): item for key, item in params.items()}
     return params
 
@@ -266,6 +281,13 @@ class TransmissionClient:
 
     def set_labels(self, hashes, labels):
         self.call("torrent_set", {"ids": list(hashes), "labels": list(labels)})
+
+    def set_torrent(self, hashes, fields):
+        """torrent_set with snake_case field names, e.g. seed_ratio_mode or upload_limit."""
+        self.call("torrent_set", {**fields, "ids": list(hashes)})
+
+    def set_session(self, fields):
+        self.call("session_set", dict(fields))
 
     def remove(self, hashes, delete_data=False):
         self.call("torrent_remove", {"ids": list(hashes), "delete_local_data": bool(delete_data)})

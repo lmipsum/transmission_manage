@@ -60,6 +60,18 @@ def test_webhook_failure_never_raises():
     assert Webhooks({}).error("nothing configured") is False
 
 
+def test_function_webhook_goes_to_the_function_named_in_it():
+    hook = FakeHook([200, 200])
+    try:
+        hooks = Webhooks({"function": {"share_limits": hook.url}}, sleep=lambda s: None)
+        assert hooks.function("cleanup_share_limits", {"torrents": ["A"]})
+        assert hooks.function("share_limits", {"torrents": ["B"]})
+        assert not hooks.function("rem_orphaned", {"orphaned_files": []})
+        assert [body["function"] for body in hook.bodies] == ["cleanup_share_limits", "share_limits"]
+    finally:
+        hook.close()
+
+
 def test_webhook_error_body_is_redacted():
     hook = FakeHook([200])
     try:
