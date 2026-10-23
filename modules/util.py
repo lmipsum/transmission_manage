@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 import os
 import re
+import shutil
 
 import yaml
 
@@ -152,8 +154,8 @@ def path_replace(path, old_prefix, new_prefix):
     return path
 
 
-def get_root_files(*directories):
-    """Every regular, non-symlink file below the given directories (missing or empty arguments are skipped)."""
+def walk_files(*directories):
+    """Every file below the given directories (missing or empty arguments are skipped)."""
     files = []
     for directory in directories:
         if not directory or not os.path.isdir(directory):
@@ -161,6 +163,73 @@ def get_root_files(*directories):
         for current, _dirs, names in os.walk(directory):
             files.extend(os.path.join(current, name) for name in names)
     return files
+
+
+def _path_is_under(path, parent):
+    if not parent:
+        return False
+    path_norm = os.path.normcase(os.path.normpath(path))
+    parent_norm = os.path.normcase(os.path.normpath(parent.rstrip("/\\")))
+    return path_norm == parent_norm or path_norm.startswith(parent_norm + os.sep)
+
+
+def get_root_files(root_dir, remote_dir, exclude_dir=None):
+    """Files under root_dir, as upstream: walk remote_dir when it differs (the path this tool can reach) and return
+    the paths in root_dir form, skipping anything under exclude_dir (given in remote_dir form)."""
+    if not root_dir:
+        return []
+    same = not remote_dir or os.path.normcase(os.path.normpath(remote_dir)) == os.path.normcase(os.path.normpath(root_dir))
+    base = root_dir if same else remote_dir
+    if not os.path.isdir(base):
+        return []
+    exclude = exclude_dir if same or not exclude_dir else path_replace(exclude_dir, remote_dir, root_dir)
+    files = []
+    for current, _dirs, names in os.walk(base):
+        as_root = current if same else path_replace(current, remote_dir, root_dir)
+        if exclude and _path_is_under(as_root, exclude):
+            continue
+        files.extend(os.path.normpath(os.path.join(as_root, name)) for name in names)
+    return files
+
+
+def move_files(src, dest, mod=False):
+    """Move src to dest, creating parent folders; mod refreshes the mtime first (as upstream). Falls back to
+    copy + remove when the move is not permitted."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    try:
+        if mod:
+            os.utime(src, None)
+        shutil.move(src, dest)
+    except PermissionError as err:
+        logger.warning("%s: copying instead", err)
+        shutil.copyfile(src, dest)
+        os.remove(src)
+
+
+def delete_files(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError as err:
+        logger.warning("File not found: %s", err.filename)
+
+
+def remove_empty_directories(root, excluded_paths=None, exclude_patterns=()):
+    """Remove empty directories below root (and root itself), never touching excluded paths or pattern matches."""
+    if not os.path.isdir(root):
+        return
+    excluded = {os.path.normcase(os.path.realpath(path)) for path in excluded_paths or []}
+    for current, _dirs, files in os.walk(root, topdown=False):
+        real = os.path.normcase(os.path.realpath(current))
+        if real in excluded or files:
+            continue
+        if any(fnmatch.fnmatch(current + os.sep, pattern) for pattern in exclude_patterns):
+            continue
+        try:
+            os.rmdir(current)
+        except PermissionError as err:
+            logger.warning("%s: unable to delete folder %s", err, current)
+        except OSError:
+            pass  # not empty
 
 
 class CheckHardLinks:
@@ -177,7 +246,7 @@ class CheckHardLinks:
     def __init__(self, root_dir, remote_dir=None, orphaned_dir=None):
         scan_root = remote_dir or root_dir
         self.inode_count = {}
-        for path in get_root_files(scan_root, orphaned_dir):
+        for path in walk_files(scan_root, orphaned_dir):
             if os.path.islink(path):
                 continue
             try:

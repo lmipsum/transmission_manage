@@ -66,6 +66,21 @@ nohardlinks:
     # <OPTIONAL> ignore_root_dir: ignore hardlinks inside root_dir itself (default true).
     ignore_root_dir: true
 
+orphaned:
+  # Orphaned files are files under root_dir that no torrent references.
+  # Files in orphaned_dir older than empty_after_x_days are deleted at the end of every run (unless skip_cleanup).
+  # Leave it unset to never empty the folder. WARNING: 0 deletes orphaned files immediately instead of moving them.
+  empty_after_x_days: 60
+  # Files newer than this many minutes are not treated as orphans (0 disables the protection).
+  min_file_age_minutes: 30
+  # Files matching these patterns are never treated as orphans.
+  exclude_patterns:
+    - "**/.DS_Store"
+    - "**/Thumbs.db"
+    - "**/*.part"
+  # Nothing is moved when more files than this qualify in one run (-1 disables the safeguard).
+  max_orphaned_files_to_delete: 50
+
 hooks:
   # <OPTIONAL> pre_remove: command run before every torrent removal. It gets a JSON object on stdin
   # (command, hash, name, tracker, status, delete_data, dry_run); exit status 0 lets the removal proceed,
