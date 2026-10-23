@@ -13,7 +13,7 @@ to Transmission. Changes are welcome when they:
 - improve tests, documentation or support for another Transmission version.
 
 Behaviour that upstream does not have does not go into the port. If you need
-it, use the `pre_remove` hook (see the README), or keep it in a fork. A new
+it, use a hook (see the README), or keep it in a fork. A new
 generic extension point can be proposed in an issue first.
 
 ## Licensing

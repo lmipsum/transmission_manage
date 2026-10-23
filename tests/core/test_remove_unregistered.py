@@ -1,3 +1,4 @@
+import json
 import textwrap
 import time
 
@@ -63,13 +64,26 @@ class Webhooks:
 
 
 class Hooks:
-    def __init__(self, allow=True):
+    def __init__(self, allow=True, keep_data=False, batch=True, classify=False):
         self.allow = allow
+        self.keep_data = keep_data
+        self.batch = batch
+        self.classify = classify
         self.payloads = []
+        self.batches = []
+        self.classified = []
 
     def pre_remove(self, payload):
         self.payloads.append(payload)
-        return self.allow
+        return self.allow, payload["delete_data"] and not self.keep_data
+
+    def pre_remove_batch(self, payload):
+        self.batches.append(payload)
+        return self.batch
+
+    def classify_unregistered(self, payload):
+        self.classified.append(payload)
+        return self.classify
 
 
 def make_context(tmp_path, torrents, commands=None, settings="", hooks=None):
@@ -419,3 +433,87 @@ def test_grace_period_blocks_deletion(tmp_path):
 def test_unregistered_message_list_entries_are_detected():
     for message in ru.TorrentMessages.UNREGISTERED_MSGS:
         assert list_in_text(message, ru.TorrentMessages.UNREGISTERED_MSGS)
+
+
+# --- extension hooks ----------------------------------------------------------------------------------
+
+
+def test_batch_hook_sees_every_planned_removal_before_any_is_made(tmp_path):
+    items = [torrent(n, [tracker(UNREG, host=f"t{n}.example:443")]) for n in (1, 2)]
+    hooks = Hooks()
+    ctx, client = make_context(tmp_path, items, hooks=hooks)
+    run(ctx)
+    assert [t["hash"] for t in hooks.batches[0]["torrents"]] == [t["hash_string"] for t in items]
+    assert hooks.batches[0]["torrents"][0]["status"] == UNREG
+    assert len([c for c in client.calls if c[0] == "remove"]) == 2
+
+
+def test_batch_hook_includes_torrents_past_the_per_tracker_limit(tmp_path):
+    items = [torrent(n, [tracker(UNREG)]) for n in (1, 2, 3)]
+    hooks = Hooks()
+    ctx, client = make_context(tmp_path, items, settings="settings:\n  rem_unregistered_max_torrents: 1\n", hooks=hooks)
+    run(ctx)
+    assert len(hooks.batches[0]["torrents"]) == 3
+    assert len([c for c in client.calls if c[0] == "remove"]) == 1
+
+
+def test_declined_batch_removes_nothing_but_still_tags(tmp_path):
+    items = [torrent(n, [tracker(UNREG)]) for n in (1, 2)]
+    hooks = Hooks(batch=False)
+    ctx, client = make_context(tmp_path, items, commands={"tag_tracker_error": True}, hooks=hooks)
+    stats = run(ctx)
+    assert [c for c in client.calls if c[0] == "remove"] == [] and hooks.payloads == []
+    assert stats["tagged"] == 2
+
+
+def test_batch_hook_is_not_called_without_planned_removals(tmp_path):
+    items = [torrent(1, [tracker(UNREG)], added=NOW - 60)]
+    hooks = Hooks()
+    ctx, _ = make_context(tmp_path, items, settings="settings:\n  rem_unregistered_grace_minutes: 10\n", hooks=hooks)
+    run(ctx)
+    assert hooks.batches == []
+
+
+def test_pre_remove_can_keep_the_files(tmp_path):
+    t = torrent(1, [tracker(UNREG)])
+    ctx, client = make_context(tmp_path, [t], hooks=Hooks(keep_data=True))
+    stats = run(ctx)
+    assert client.calls == [("remove", (t["hash_string"],), False)]
+    assert (stats["deleted"], stats["deleted_contents"]) == (1, 0)
+
+
+def test_classify_hook_marks_an_unknown_message_unregistered(tmp_path):
+    t = torrent(1, [tracker("Tracker HTTP response 404 (Not Found)", succeeded=False)])
+    hooks = Hooks(classify=True)
+    ctx, client = make_context(tmp_path, [t], hooks=hooks)
+    run(ctx)
+    assert hooks.classified[0]["trackers"] == [{"host": "t1.example.org:443", "message": "Tracker HTTP response 404 (Not Found)"}]
+    assert "announce" not in json.dumps(hooks.classified)  # no announce URLs (passkeys) in hook payloads
+    assert client.calls == [("remove", (t["hash_string"],), True)]
+
+
+def test_classify_hook_answer_no_keeps_the_torrent(tmp_path):
+    t = torrent(1, [tracker("Tracker HTTP response 404 (Not Found)", succeeded=False)])
+    ctx, client = make_context(tmp_path, [t], hooks=Hooks(classify=False))
+    run(ctx)
+    assert client.calls == []
+
+
+def test_classify_hook_is_not_asked_about_known_or_never_unregistered_messages(tmp_path):
+    items = [
+        torrent(1, [tracker(UNREG)]),
+        torrent(2, [tracker("Passkey not found", succeeded=False)]),
+        torrent(3, [tracker("Tracker is down", succeeded=False)]),
+    ]
+    hooks = Hooks(classify=True)
+    ctx, _ = make_context(tmp_path, items, hooks=hooks)
+    run(ctx)
+    assert hooks.classified == []
+
+
+def test_classify_hook_is_only_used_for_rem_unregistered(tmp_path):
+    t = torrent(1, [tracker("Tracker HTTP response 404 (Not Found)", succeeded=False)])
+    hooks = Hooks(classify=True)
+    ctx, client = make_context(tmp_path, [t], commands={"rem_unregistered": False, "tag_tracker_error": True}, hooks=hooks)
+    run(ctx)
+    assert hooks.classified == [] and [c for c in client.calls if c[0] == "remove"] == []

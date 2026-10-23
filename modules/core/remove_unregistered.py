@@ -1,8 +1,9 @@
 """rem_unregistered and tag_tracker_error, ported from qbit_manage's modules/core/remove_unregistered.py.
 
 Behaviour follows upstream; the Transmission-specific part is how tracker state is read (see classify_trackers).
-The tracker-specific code path upstream keeps for a single site is not ported. Before each removal the optional
-pre_remove hook is consulted.
+The tracker-specific code path upstream keeps for a single site is not ported. Three optional hooks extend it
+without changing the default: classify_unregistered for tracker messages the built-in lists do not know,
+pre_remove_batch over a run's planned removals, and pre_remove before each removal (see modules/hooks.py).
 """
 
 from __future__ import annotations
@@ -124,12 +125,25 @@ class RemoveUnregistered:
         working_names = {t["name"] for t in torrents if states[t["hash_string"]][0] == WORKING}
 
         self.remove_previous_errors(torrents, states)
+        issues = []
         for torrent in torrents:
             state, failing = states[torrent["hash_string"]]
             if state != FAILING or not failing:
                 continue
+            if self.filter_completed and (torrent.get("percent_done") or 0) < 1:
+                continue
+            issues.append((torrent, failing, self.unregistered_tracker(torrent, failing)))
+        planned = self.planned_removals(issues)
+        for torrent, failing, unregistered in issues:
             try:
-                self.process_torrent_issue(torrent, failing, shared.get(torrent["hash_string"], False), working_names)
+                self.process_torrent_issue(
+                    torrent,
+                    failing,
+                    unregistered,
+                    torrent["hash_string"] in planned,
+                    shared.get(torrent["hash_string"], False),
+                    working_names,
+                )
             except tr.TransmissionError as err:
                 logger.error("Remove Unregistered Torrents Error: %s: %s", torrent.get("name"), err)
         for function, items in self.events.items():
@@ -148,23 +162,69 @@ class RemoveUnregistered:
                 self.events["untag_tracker_error"].append({"name": torrent["name"], "tag": self.tag_error})
                 logger.info("Previous tagged %s torrent currently has a working tracker: %s", self.tag_error, torrent["name"])
 
-    def process_torrent_issue(self, torrent, failing, has_cross_seed, working_names):
-        if self.filter_completed and (torrent.get("percent_done") or 0) < 1:
-            return
-        unregistered = find_unregistered(failing)
-        if self.cfg_rem_unregistered and unregistered is not None:
+    def unregistered_tracker(self, torrent, failing):
+        """The failing tracker that says the torrent is gone, asking classify_unregistered when no built-in message
+        matched. Messages upstream never treats as unregistered are not offered to the hook."""
+        tracker = find_unregistered(failing)
+        if tracker is not None or not self.cfg_rem_unregistered:
+            return tracker
+        unknown = [
+            t
+            for t in failing
+            if (t.get("last_announce_result") or "").strip()
+            and not list_in_text(t["last_announce_result"].upper(), TorrentMessages.IGNORE_MSGS)
+        ]
+        if not unknown:
+            return None
+        payload = {
+            "command": "rem_unregistered",
+            "hash": torrent["hash_string"],
+            "name": torrent["name"],
+            "trackers": [{"host": _tracker_key(t), "message": t["last_announce_result"]} for t in unknown],
+        }
+        return unknown[0] if self.ctx.hooks.classify_unregistered(payload) else None
+
+    def planned_removals(self, issues):
+        """Hashes to remove this run: unregistered, not ignored, past the grace period, and accepted as a whole by
+        the pre_remove_batch hook. The per-tracker limit and pre_remove still apply to each one afterwards."""
+        if not self.cfg_rem_unregistered:
+            return set()
+        planned = []
+        for torrent, _failing, unregistered in issues:
+            if unregistered is None:
+                continue
             message = unregistered.get("last_announce_result") or ""
             if list_in_text(message.upper(), self.ignore_list):
                 logger.info("Ignoring unregistered torrent %s due to matching phrase found in ignore list.", torrent["name"])
-            else:
-                within_grace, age = self.is_within_grace(torrent)
-                if within_grace:
-                    logger.info(
-                        "Skipping removal (within grace %d min, age %.1f min): %s", self.grace_minutes, age, torrent["name"]
-                    )
-                else:
-                    self.check_max_limit_and_delete(torrent, unregistered, has_cross_seed, working_names)
+                continue
+            within_grace, age = self.is_within_grace(torrent)
+            if within_grace:
+                logger.info("Skipping removal (within grace %d min, age %.1f min): %s", self.grace_minutes, age, torrent["name"])
+                continue
+            planned.append((torrent, unregistered))
+        if not planned:
+            return set()
+        payload = {
+            "command": "rem_unregistered",
+            "dry_run": self.dry_run,
+            "torrents": [
+                {
+                    "hash": torrent["hash_string"],
+                    "name": torrent["name"],
+                    "tracker": _tracker_key(tracker),
+                    "status": tracker.get("last_announce_result"),
+                }
+                for torrent, tracker in planned
+            ],
+        }
+        if not self.ctx.hooks.pre_remove_batch(payload):
+            logger.warning("pre_remove_batch hook declined the run: none of the %d planned removals is made", len(planned))
+            return set()
+        return {torrent["hash_string"] for torrent, _tracker in planned}
 
+    def process_torrent_issue(self, torrent, failing, unregistered, planned, has_cross_seed, working_names):
+        if planned:
+            self.check_max_limit_and_delete(torrent, unregistered, has_cross_seed, working_names)
         if self.cfg_tag_error and self.tag_error not in (torrent.get("labels") or []):
             tracker = unregistered if unregistered is not None else failing[0]
             self.tag_tracker_error(torrent, tracker)
@@ -199,7 +259,8 @@ class RemoveUnregistered:
             "delete_data": delete_contents,
             "dry_run": self.dry_run,
         }
-        if not self.ctx.hooks.pre_remove(payload):
+        allowed, delete_contents = self.ctx.hooks.pre_remove(payload)
+        if not allowed:
             return
         if self.max_per_tracker > 0:
             self.tracker_del_count[host] = self.tracker_del_count.get(host, 0) + 1

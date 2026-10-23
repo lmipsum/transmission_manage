@@ -71,13 +71,26 @@ class Webhooks:
 
 
 class Hooks:
-    def __init__(self, allow=True):
+    def __init__(self, allow=True, keep_data=False, batch=True, classify=False):
         self.allow = allow
+        self.keep_data = keep_data
+        self.batch = batch
+        self.classify = classify
         self.payloads = []
+        self.batches = []
+        self.classified = []
 
     def pre_remove(self, payload):
         self.payloads.append(payload)
-        return self.allow
+        return self.allow, payload["delete_data"] and not self.keep_data
+
+    def pre_remove_batch(self, payload):
+        self.batches.append(payload)
+        return self.batch
+
+    def classify_unregistered(self, payload):
+        self.classified.append(payload)
+        return self.classify
 
 
 def group(**overrides):

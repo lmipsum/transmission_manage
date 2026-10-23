@@ -737,8 +737,11 @@ class ShareLimits:
                 "delete_data": delete_contents,
                 "dry_run": self.dry_run,
             }
-            if not self.ctx.hooks.pre_remove(payload):
+            allowed, delete_contents = self.ctx.hooks.pre_remove(payload)
+            if not allowed:
                 continue
+            if not delete_contents and not reason:
+                reason = "Reason: kept by the pre_remove hook"
             if not self.dry_run:
                 self.client.remove([t_hash], delete_data=delete_contents)
             if delete_contents:
