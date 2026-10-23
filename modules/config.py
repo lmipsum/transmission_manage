@@ -69,6 +69,8 @@ DIRECTORY_SCHEMA = {
 
 HOOKS_SCHEMA = {
     "pre_remove": ((str, type(None)), None),
+    "pre_remove_batch": ((str, type(None)), None),
+    "classify_unregistered": ((str, type(None)), None),
     "timeout": ((int,), 60),
 }
 

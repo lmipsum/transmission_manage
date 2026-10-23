@@ -7,7 +7,7 @@ body:
     attributes:
       value: >
         This project ports qbit_manage. Features that qbit_manage does not have belong in a fork or behind
-        the `pre_remove` hook; a new generic extension point can be proposed here.
+        a hook (see the README); a new generic extension point can be proposed here.
   - type: textarea
     id: problem
     attributes:

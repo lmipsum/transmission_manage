@@ -143,11 +143,17 @@ share_limits:
     max_seeding_time: -1
 
 hooks:
-  # <OPTIONAL> pre_remove: command run before every torrent removal. It gets a JSON object on stdin
-  # (command, hash, name, tracker, delete_data, dry_run, plus status for rem_unregistered or grouping and reason
-  # for share_limits); exit status 0 lets the removal proceed, anything else skips it. A hook that fails to run
-  # or exceeds the timeout also skips the removal.
+  # Extension commands; each gets a JSON object on stdin. A hook that fails to run or exceeds the timeout counts
+  # as a no. See the README for the payloads.
+  # <OPTIONAL> pre_remove: run before every torrent removal; exit status 0 lets it proceed, anything else skips
+  # it. On exit 0 a last stdout line of {"delete_data": false} keeps the files and removes only the torrent.
   pre_remove: null
+  # <OPTIONAL> pre_remove_batch: run once per rem_unregistered run with every planned removal; exit status 0 lets
+  # the run proceed, anything else skips all of its removals.
+  pre_remove_batch: null
+  # <OPTIONAL> classify_unregistered: run for a failing torrent whose tracker messages match none of the built-in
+  # unregistered messages; exit status 0 marks it unregistered.
+  classify_unregistered: null
   timeout: 60 # Seconds.
 
 webhooks:

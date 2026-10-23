@@ -69,20 +69,38 @@ configuration.
 
 ### Hooks
 
-The port adds one extension point and nothing else: a `pre_remove` command run
-before every torrent removal, so another tool can apply its own rules without
-changing the port.
+The port adds extension points and nothing else: external commands that let
+another tool apply its own rules without changing the port. Upstream behaviour
+is unchanged when they are not configured.
 
 ```yaml
 hooks:
   pre_remove: /path/to/check-removal
+  pre_remove_batch: /path/to/check-batch
+  classify_unregistered: /path/to/classify
   timeout: 60
 ```
 
-The command receives a JSON object on stdin (`command`, `hash`, `name`,
-`tracker`, `delete_data`, `dry_run`, plus `status` for `rem_unregistered` or
-`grouping` and `reason` for `share_limits`). Exit status `0` lets the removal
-proceed; any other status, a failure to run, or a timeout skips it.
+Each command receives a JSON object on stdin with an `event` field naming the
+hook. A command that fails to run or exceeds the timeout counts as a no.
+Payloads carry tracker hosts and messages, never announce URLs.
+
+- `pre_remove` runs before every torrent removal (`command`, `hash`, `name`,
+  `tracker`, `delete_data`, `dry_run`, plus `status` for `rem_unregistered` or
+  `grouping` and `reason` for `share_limits`). Exit status `0` lets the removal
+  proceed; anything else skips it. On exit `0`, a JSON object on the last line
+  of stdout may set `"delete_data": false` to remove only the torrent and keep
+  its files; it can never turn a keep into a delete.
+- `pre_remove_batch` runs once per `rem_unregistered` run, before anything is
+  removed, with every planned removal (`command`, `dry_run`, `torrents`: each
+  with `hash`, `name`, `tracker`, `status`), counted after the ignore list and
+  the grace period but before the per-tracker limit. Exit status `0` lets the
+  run proceed; anything else skips all of its removals.
+- `classify_unregistered` runs during `rem_unregistered` for a failing torrent
+  whose tracker messages match none of the built-in unregistered messages
+  (`command`, `hash`, `name`, `trackers`: each with `host` and `message`).
+  Messages the built-in lists treat as never unregistered are not offered.
+  Exit status `0` marks the torrent unregistered.
 
 ## Development
 

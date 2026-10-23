@@ -23,7 +23,7 @@ def test_sample_config_is_valid(monkeypatch):
     assert config.commands["dry_run"] is True
     assert config.transmission["user"] == "u"
     assert config.tracker["tracker-two-backup.example.net"] == ["TrackerTwo", "private"]
-    assert config.hooks == {"pre_remove": None, "timeout": 60}
+    assert config.hooks == {"pre_remove": None, "pre_remove_batch": None, "classify_unregistered": None, "timeout": 60}
 
 
 def test_defaults_when_sections_are_missing(tmp_path):
