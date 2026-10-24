@@ -14,8 +14,9 @@ modules, keeping qbit_manage's behaviour, module names and configuration keys
 wherever Transmission allows it. Where Transmission works differently (no
 categories, a different tracker status model), the port says so below.
 
-> **Status:** early work in progress, no release yet. The modules below are
-> ported one by one, tracked in the issues.
+> **Status:** first release out
+> ([v0.1.0](https://github.com/lmipsum/transmission_manage/releases/tag/v0.1.0)).
+> Every module in the table below is ported; new work is tracked in the issues.
 
 ## Supported Transmission Versions
 
