@@ -2,8 +2,10 @@
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/lmipsum/transmission_manage/tests.yml?branch=main&label=tests&style=plastic)](https://github.com/lmipsum/transmission_manage/actions/workflows/tests.yml)
 [![Secrets scan](https://img.shields.io/github/actions/workflow/status/lmipsum/transmission_manage/secrets-scan.yml?branch=main&label=secrets%20scan&style=plastic)](https://github.com/lmipsum/transmission_manage/actions/workflows/secrets-scan.yml)
-[![License: MIT](https://img.shields.io/github/license/lmipsum/transmission_manage?style=plastic)](LICENSE)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Release](https://img.shields.io/github/v/release/lmipsum/transmission_manage?style=plastic)](https://github.com/lmipsum/transmission_manage/releases/latest)
+[![License](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Flmipsum%2Ftransmission_manage%2Fmain%2Fpyproject.toml&query=%24.project.license&label=license&color=blue&style=plastic)](LICENSE)
+[![Python](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Flmipsum%2Ftransmission_manage%2Fmain%2Fpyproject.toml&query=%24.project%5B'requires-python'%5D&label=python&logo=python&logoColor=white&color=3776AB&style=plastic)](https://www.python.org/)
+[![Ruff](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Flmipsum%2Ftransmission_manage%2Fmain%2F.pre-commit-config.yaml&query=%24.repos%5B2%5D.rev&label=ruff&logo=ruff&logoColor=white&color=D7FF64&style=plastic)](https://github.com/astral-sh/ruff)
 
 A port of [qbit_manage](https://github.com/StuffAnthings/qbit_manage) to the
 [Transmission](https://transmissionbt.com/) BitTorrent client.
