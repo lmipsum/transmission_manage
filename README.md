@@ -10,15 +10,9 @@
 A port of [qbit_manage](https://github.com/StuffAnthings/qbit_manage) to the
 [Transmission](https://transmissionbt.com/) BitTorrent client.
 
-qbit_manage automates the chores of running a qBittorrent box on private
-trackers. Nothing comparable exists for Transmission, so this project ports its
-modules, keeping qbit_manage's behaviour, module names and configuration keys
-wherever Transmission allows it. Where Transmission works differently (no
-categories, a different tracker status model), the port says so below.
-
-> **Status:** first release out
-> ([v0.1.0](https://github.com/lmipsum/transmission_manage/releases/tag/v0.1.0)).
-> Every module in the table below is ported; new work is tracked in the issues.
+It keeps qbit_manage's behaviour, module names and configuration keys wherever
+Transmission allows it; where Transmission works differently (no categories, a
+different tracker status model), the table below says so.
 
 ## Supported Transmission Versions
 
@@ -72,9 +66,8 @@ configuration.
 
 ### Hooks
 
-The port adds extension points and nothing else: external commands that let
-another tool apply its own rules without changing the port. Upstream behaviour
-is unchanged when they are not configured.
+External commands that let another tool apply its own rules; without them the
+port behaves as upstream.
 
 ```yaml
 hooks:
@@ -109,12 +102,10 @@ Payloads carry tracker hosts and messages, never announce URLs.
 
 ```bash
 python -m pip install -e ".[dev]"
-pip install pre-commit && pre-commit install   # ruff, yamllint, tracker-secret scan
 python -m pytest
 ```
 
-A commit or push that contains anything shaped like a tracker passkey is
-refused, both by the pre-commit hook and in CI.
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## Support
 
