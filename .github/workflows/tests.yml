@@ -40,8 +40,9 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Lint
         run: ruff check . && ruff format --check .
+      # Below the coverage floor fails: raise it as coverage grows, never lower it.
       - name: Unit tests
-        run: python -m pytest -q
+        run: python -m pytest -q --cov=modules --cov=transmission_manage --cov-report=term-missing:skip-covered --cov-fail-under=95
       - name: Sample config validates
         run: |
           python - <<'PY'
