@@ -14,7 +14,7 @@ authors = [{ name = "lmipsum" }]
 dependencies = ["PyYAML>=6.0", "pytimeparse2>=1.7"]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "ruff==0.17.3"]
+dev = ["pytest==9.1.1", "pytest-cov==7.1.0", "ruff==0.17.3"]
 
 [project.urls]
 Repository = "https://github.com/lmipsum/transmission_manage"
