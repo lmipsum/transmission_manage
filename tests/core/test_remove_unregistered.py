@@ -114,6 +114,12 @@ def test_a_tracker_not_yet_reported_is_inconclusive(pending):
     assert state == ru.INCONCLUSIVE
 
 
+def test_a_queued_tracker_after_an_unregistered_reply_is_failing():
+    # Transmission keeps a past announce time after an unregistered reply and never reschedules: state 2 (queued).
+    state, failing = ru.classify_trackers([tracker(UNREG, succeeded=False, state=2)])
+    assert state == ru.FAILING and len(failing) == 1
+
+
 def test_backup_trackers_and_non_announce_urls_are_ignored():
     dht = {"announce": "dht://x", "has_announced": True, "last_announce_succeeded": True}
     state, failing = ru.classify_trackers([tracker(UNREG), tracker("Success", backup=True), dht])

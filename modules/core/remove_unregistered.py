@@ -39,8 +39,10 @@ def classify_trackers(tracker_stats):
 
     Returns (state, failing_trackers):
     - WORKING      any real tracker's last announce succeeded (qbit WORKING);
-    - INCONCLUSIVE a real tracker has not announced this session, or is queued / announcing right now
-                   (qbit NOT_CONTACTED / UPDATING);
+    - INCONCLUSIVE a real tracker has not announced this session, or is announcing right now
+                   (qbit NOT_CONTACTED / UPDATING). A queued tracker is not UPDATING: after an unregistered reply
+                   Transmission schedules no new announce but keeps the past announce time, so the tracker shows
+                   as queued for good;
     - FAILING      every real tracker reported a failure (qbit NOT_WORKING / TRACKER_ERROR / UNREACHABLE);
                    failing_trackers leaves out those whose message matches EXCEPTIONS_MSGS, as upstream does when
                    it builds its list of torrents with issues;
@@ -52,10 +54,7 @@ def classify_trackers(tracker_stats):
         return NO_TRACKERS, []
     if any(tracker.get("last_announce_succeeded") for tracker in real):
         return WORKING, []
-    if any(
-        not tracker.get("has_announced") or tracker.get("announce_state") in (tr.TRACKER_QUEUED, tr.TRACKER_ACTIVE)
-        for tracker in real
-    ):
+    if any(not tracker.get("has_announced") or tracker.get("announce_state") == tr.TRACKER_ACTIVE for tracker in real):
         return INCONCLUSIVE, []
     failing = [
         tracker

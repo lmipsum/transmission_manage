@@ -9,3 +9,4 @@ build/
 dist/
 logs/
 config/config.yml
+.coverage
