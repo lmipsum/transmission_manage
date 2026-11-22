@@ -56,7 +56,7 @@ configuration.
 |---|---|---|
 | Client (replaces `qbittorrent.py`) | done | Torrents are addressed by info hash, and calls that change torrents refuse an empty selection (an omitted `ids` acts on every torrent). |
 | Config, `dry_run`, webhooks | done | qbit_manage key names. Webhooks are plain URLs; Notifiarr and Apprise are not ported. |
-| `remove_unregistered` + `tag_tracker_error` | done | Tracker state is read from `tracker_stats`: a successful announce on any tracker means working (qBittorrent's WORKING); not yet announced, queued or announcing means inconclusive (NOT_CONTACTED / UPDATING); backup trackers are ignored. |
+| `remove_unregistered` + `tag_tracker_error` | done | Tracker state is read from `tracker_stats`: a successful announce on any tracker means working (qBittorrent's WORKING); not yet announced or announcing means inconclusive (NOT_CONTACTED / UPDATING), a queued tracker counts by its last result; backup trackers are ignored. |
 | `tag_nohardlinks` | done | The `nohardlinks` section is keyed by Transmission label, since Transmission has no categories; `ignore_category_dir` is therefore not available. |
 | `remove_orphaned` | done | Torrent file paths are `download_dir` + `files`; for torrents that are not complete, the session's `incomplete_dir` and the `.part` suffix stand in for qBittorrent's download path. Download directories of torrents are kept when empty folders are removed, in place of category save paths. |
 | `recheck` | done | A per-torrent ratio limit exists only with `seed_ratio_mode` 1; global and unlimited modes count as no limit, as upstream treats qBittorrent's -2 and -1. The seeding-time limit is the one `share_limits` enforces for the torrent's group. |
